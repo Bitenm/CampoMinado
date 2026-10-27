@@ -1,117 +1,123 @@
 package br.com.biten.cm.modelo;
 
-import br.com.biten.cm.execao.ExplosionException;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-public class Tabuleiro {
+public class Tabuleiro implements CampoObservador {
     private final List<Campo> campos = new ArrayList<>();
+    private final List<Consumer<ResultadoEvento>> observadores = new ArrayList<>();
     private final Campo[][] grade;
-    private int lines;
-    private int column;
-    private int bombs;
+    private final int linhas;
+    private final int colunas;
+    private final int minas;
 
-    public Tabuleiro(int lines, int column, int bombs) {
-        this.lines = lines;
-        this.column = column;
-        this.bombs = bombs;
-        this.grade = new Campo[lines][column];
+    public Tabuleiro(int linhas, int colunas, int minas) {
+        this.linhas = linhas;
+        this.colunas = colunas;
+        this.minas = minas;
+        this.grade = new Campo[linhas][colunas];
 
-        createCampo();
-        associateNeighbor();
-        sortedBombs();
+        gerarCampos();
+        associarVizinhos();
+        sortearMinas();
     }
 
-    public void open(int lines, int column){
-        try {
-            getCampo(lines, column).open();
-
-        } catch (ExplosionException e){
-            campos.forEach(c-> c.setOpen(true));
-            throw e;
-        }
+    public void registrarObservador(Consumer<ResultadoEvento> observador){
+        observadores.add(observador);
     }
 
-    public void marked(int lines, int column){
-        getCampo(lines, column).changeMark();
+    private void notificarObservadores(boolean resultado){
+        observadores.stream().forEach(o-> o.accept(new ResultadoEvento(resultado)));
     }
 
-    public void resetGame(){
-        campos.forEach(Campo::reset);
-        sortedBombs();
+    public void abrir(int linha, int coluna){
+
+        getCampo(linha, coluna).abrir();
 
     }
 
-    public boolean goalAchieved(){
-        return campos.stream().allMatch(Campo::goalAchieved);
+    public void alternarMarcacao(int linha, int coluna){
+        getCampo(linha, coluna).alternarMarcacao();
+    }
+
+    public void reiniciar(){
+        campos.forEach(Campo::reiniciar);
+        sortearMinas();
+    }
+
+    public boolean objetivoAlcancado(){
+        return campos.stream().allMatch(Campo::objetivoAlcancado);
 
     }
 
-    public String toString(){
-        StringBuilder sb = new StringBuilder();
-
-        int count = 0;
-        sb.append("   ");
-        for (int c = 0; c < column; c++){
-            sb.append("[").append(c).append("]");
-        }
-        sb.append("\n");
-
-        for (int i = 0 ; i < lines; i++){
-            sb.append("[").append(i).append("]");
-            for(int j = 0 ; j < column ; j++){
-                sb.append(" ");
-                sb.append(campos.get(count));
-                sb.append(" ");
-
-                count ++;
-
-            }
-            sb.append("\n");
-
-        }
-
-        return sb.toString();
-    }
-
-    public void createCampo() {
-        for (int i = 0 ; i < lines; i++){
-            for(int j = 0 ; j < column;j++){
+    private void gerarCampos() {
+        for (int i = 0 ; i < linhas; i++){
+            for(int j = 0 ; j < colunas;j++){
                 Campo campo = new Campo(i, j);
                 grade[i][j] = campo;
+                campo.registrarObservador(this);
                 campos.add(campo);
             }
         }
     }
 
-    public void associateNeighbor() {
+    private void associarVizinhos() {
         for(Campo c1: campos){
             for(Campo c2: campos){
-                c1.addNeighbors(c2);
+                c1.adicionarVizinho(c2);
             }
         }
     }
 
-    public void sortedBombs() {
+    private void sortearMinas() {
         long minasArmadas = 0;
-        Predicate<Campo> minado = Campo::isBomb;
+        Predicate<Campo> minado = Campo::isMinado;
 
-        while(minasArmadas < bombs){
+        while(minasArmadas < minas){
             int aleatorio = (int)(Math.random() * campos.size());
-            campos.get(aleatorio).bombard();
+            campos.get(aleatorio).minar();
             minasArmadas = campos.stream().filter(minado).count();
         }
     }
 
-    public Campo getCampo(int lines, int column){
-        return grade[lines][column];
+    public Campo getCampo(int linha, int coluna){
+        return grade[linha][coluna];
     }
 
-    public List<Campo> getCampos(){
-        return Collections.unmodifiableList(campos);
+    public void paraCada(Consumer<Campo> funcao){
+        campos.forEach(funcao);
     }
 
+    @Override
+    public void eventoOcorreu(Campo c, CampoEvento evento) {
+        if(evento ==  CampoEvento.EXPLODIR){
+            mostrarMinas();
+            notificarObservadores(false);
+        } else if(objetivoAlcancado()){
+
+            notificarObservadores(true);
+        }
+    }
+
+    private void mostrarMinas(){
+        campos.stream()
+                .filter(c -> c.isMinado())
+                .filter(c -> !c.isMarcado())
+                .forEach(c -> c.setAberto(true));
+    }
+
+    public int getLinhas() {
+        return linhas;
+    }
+
+    public int getColunas() {
+        return colunas;
+    }
+
+    public int getMinas() {
+        return minas;
+    }
 }

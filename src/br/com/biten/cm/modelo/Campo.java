@@ -1,62 +1,77 @@
 package br.com.biten.cm.modelo;
 
-import br.com.biten.cm.execao.ExplosionException;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class Campo {
-    private final int line;
-    private final int column;
+    private final int linha;
+    private final int coluna;
 
-    private boolean bomb;
-    private boolean open;
-    private boolean marked;
+    private boolean minado;
+    private boolean aberto;
+    private boolean marcado;
 
-    private List<Campo> neighbors = new ArrayList<>();
+    private List<Campo> vizinhos = new ArrayList<>();
+    private List<CampoObservador> observadores = new ArrayList<>();
 
-    public Campo(int line, int column) {
-        this.line = line;
-        this.column = column;
+    public Campo(int linha, int coluna) {
+        this.linha = linha;
+        this.coluna = coluna;
     }
 
-    public boolean addNeighbors(Campo neighbor){
-        boolean differentLine = line != neighbor.line ;
-        boolean differentColumn = column != neighbor.column;
-        boolean diagonal = differentLine && differentColumn;
+    public void registrarObservador(CampoObservador observador){
+        observadores.add(observador);
+    }
 
-        int deltaLine = Math.abs(line - neighbor.line);
-        int deltaColumn = Math.abs(column - neighbor.column);
-        int deltaGeral = deltaColumn + deltaLine;
+    private void notificarObservadores(CampoEvento evento){
+        observadores.stream().forEach(o-> o.eventoOcorreu(this, evento));
+    }
+
+    public boolean adicionarVizinho(Campo vizinho){
+        boolean linhaDiferente = linha != vizinho.linha;
+        boolean colunaDiferente = coluna != vizinho.coluna;
+        boolean diagonal = linhaDiferente && colunaDiferente;
+
+        int deltaLinha = Math.abs(linha - vizinho.linha);
+        int deltaColuna = Math.abs(coluna - vizinho.coluna);
+        int deltaGeral = deltaColuna + deltaLinha;
 
         if(deltaGeral == 1){
-            neighbors.add(neighbor);
+            vizinhos.add(vizinho);
             return true;
         } else if (deltaGeral == 2 && diagonal){
-            neighbors.add(neighbor);
+            vizinhos.add(vizinho);
             return true;
         } else{
             return false;
         }
     }
 
-    public void changeMark(){
-        if(!open){
-            marked = !marked;
+    public void alternarMarcacao(){
+        if(!aberto){
+            marcado = !marcado;
+        }
+
+        if(marcado){
+            notificarObservadores(CampoEvento.MARCAR);
+        } else{
+            notificarObservadores(CampoEvento.DESMARCAR);
         }
     }
 
-    public boolean open(){
+    public boolean abrir(){
 
-        if(!open && !marked){
-            open = true;
-
-            if(bomb){
-                throw new ExplosionException();
+        if(!aberto && !marcado){
+            if(minado){
+                notificarObservadores(CampoEvento.EXPLODIR);
+                return true;
             }
 
-            if(neighborSecurity()){
-                neighbors.forEach(Campo::open);
+            setAberto(true);
+
+            if(vizinhancaSegura()){
+                vizinhos.forEach(Campo::abrir);
             }
             return true;
         } else{
@@ -64,66 +79,56 @@ public class Campo {
         }
     }
 
-    boolean neighborSecurity(){
-        return neighbors.stream().noneMatch(v -> v.bomb);
+    public boolean vizinhancaSegura(){
+        return vizinhos.stream().noneMatch(v -> v.minado);
     }
 
-    public void bombard(){
-        bomb = true;
+    public void minar(){
+        minado = true;
     }
 
-    public void reset(){
-        open = false;
-        bomb = false;
-        marked = false;
+    public void reiniciar(){
+        aberto = false;
+        minado = false;
+        marcado = false;
+        notificarObservadores( CampoEvento.REINICIAR);
     }
 
-    public boolean goalAchieved(){
-        boolean opened =  !bomb && open;
-        boolean security = marked && bomb;
-        return opened || security;
+    public boolean objetivoAlcancado(){
+        boolean desvendado = !minado && aberto;
+        boolean protegido = marcado && minado;
+        return desvendado || protegido;
     }
 
-    public boolean isMarked() {
-        return marked;
+    public boolean isMarcado() {
+        return marcado;
     }
 
-    public boolean isOpen() {
-        return open;
+    public boolean isAberto() {
+        return aberto;
     }
 
-    public void setOpen(boolean open) {
-        this.open = open;
-    }
-
-    public boolean isBomb() {
-        return bomb;
-    }
-
-    public int getLine() {
-        return line;
-    }
-
-    public int getColumn() {
-        return column;
-    }
-
-    public long bombInNeighboard(){
-        return neighbors.stream().filter(v -> v.bomb).count();
-    }
-
-    public String toString(){
-        if(marked){
-            return "x";
-
-        } else if(open && bomb){
-            return "*";
-        } else if(open && bombInNeighboard() > 0){
-            return Long.toString(bombInNeighboard());
-        } else if (open){
-            return " ";
-        } else {
-            return "?";
+    public void setAberto(boolean aberto) {
+        this.aberto = aberto;
+        if(aberto){
+            notificarObservadores(CampoEvento.ABRIR);
         }
     }
+
+    public boolean isMinado() {
+        return minado;
+    }
+
+    public int getLinha() {
+        return linha;
+    }
+
+    public int getColuna() {
+        return coluna;
+    }
+
+    public int minasNaVizinhanca(){
+        return (int)vizinhos.stream().filter(v -> v.minado).count();
+    }
+
 }
